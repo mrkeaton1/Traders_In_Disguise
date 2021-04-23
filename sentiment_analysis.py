@@ -1,5 +1,6 @@
 from nltk.sentiment import SentimentIntensityAnalyzer
 import numpy as np
+from statistics import mean
 
 
 # Softmax function for balancing sum of output sentiments
@@ -18,6 +19,6 @@ def pretrained_sentiment(tokenized_input):
             for tweet in tokenized_input[company][date]:
                 untokenized_tweet = " ".join(tweet)
                 day_sentiments.append(sia.polarity_scores(untokenized_tweet)['compound'])
-            cs[date] = softmax(sum(day_sentiments))
+            cs[date] = mean(day_sentiments)
         sentiments[company] = cs
     return sentiments

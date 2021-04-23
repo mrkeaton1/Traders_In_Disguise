@@ -91,13 +91,25 @@ def gen_timeseries_samples(data, step, lag):
     for company in data.keys():
         company_samples = [value for (key, value) in sorted(data[company].items())]
         company_samples = [item for item in company_samples if item[0] != 0]  # Remove values where percent change is zero
-        for i in range(0, len(company_samples) - step + 1, step):
+        for i in range(0, len(company_samples) - lag, step):
             timeseries.append(company_samples[i:i+lag+1])
     return np.array(timeseries)
 
 
-def normalize_features(data):
-    d_min = np.amin(data, axis=(0, 1))
-    d_max = np.amax(data, axis=(0, 1))
-    norm_data = (data - d_min[None, None, :]) / (d_max[None, None, :] - d_min[None, None, :])
-    return norm_data, d_min, d_max
+def normalize_features(data1, data2, data3):
+    d_min1 = np.amin(data1, axis=(0, 1))
+    d_max1 = np.amax(data1, axis=(0, 1))
+
+    d_min2 = np.amin(data2, axis=(0, 1))
+    d_max2 = np.amax(data2, axis=(0, 1))
+
+    d_min3 = np.amin(data1, axis=(0, 1))
+    d_max3 = np.amax(data1, axis=(0, 1))
+
+    d_min = np.minimum(d_min1, d_min2, d_min3)
+    d_max = np.maximum(d_max1, d_max2, d_max3)
+
+    norm_data1 = (data1 - d_min[None, None, :]) / (d_max[None, None, :] - d_min[None, None, :])
+    norm_data2 = (data2 - d_min[None, None, :]) / (d_max[None, None, :] - d_min[None, None, :])
+    norm_data3 = (data3 - d_min[None, None, :]) / (d_max[None, None, :] - d_min[None, None, :])
+    return norm_data1, norm_data2, norm_data3, d_min, d_max
