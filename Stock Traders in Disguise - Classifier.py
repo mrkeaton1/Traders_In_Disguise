@@ -12,13 +12,13 @@ from data_preprocessing import load_stock_price_data, load_tweet_data, combine_p
 from sentiment_analysis import pretrained_sentiment
 from utils import positional_encoding, recover_true_values, elapsed_time
 
-
+version = 5
 load_data = True
 
 
-epochs = 10
-batch_size = 8
-learning_rate = 5e-6
+epochs = 20
+batch_size = 16
+learning_rate = 1e-6
 # Data parameters
 step = 4
 lag = 7
@@ -29,8 +29,9 @@ end_train = datetime(2015, 7, 31)
 end_val = datetime(2015, 9, 30)
 end_dt = datetime(2016, 1, 1)
 # Model parameters
-model = TransformerClassifier(d_model, d_model, 512, 6, 0.5).to('cuda')
+model = TransformerClassifier(d_model, d_model, lag, 2048, 12, 0.5).to('cuda')
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 criterion = nn.CrossEntropyLoss()
 positional_encoder = torch.tensor(positional_encoding(lag, d_model)).to('cuda')
 
@@ -62,31 +63,31 @@ def preprocess_data():
     data_val = gen_timeseries_samples(d_val, step, lag)
     data_test = gen_timeseries_samples(d_test, step, lag)
 
-    print('Completed in {}\n'.format(elapsed_time(time() - start_preprocessing)))
+    print('Completed in {}'.format(elapsed_time(time() - start_preprocessing)))
 
-    print('Saving files as pickles...')
+    print('Saving files as pickles...\n')
     if not os.path.exists('saved_data'):
         os.mkdir('saved_data')
-    with open(os.path.join('saved_data', 'train_data.pkl'), 'wb') as train_d:
+    with open(os.path.join('saved_data', 'transformer_train_data.pkl'), 'wb') as train_d:
         pickle.dump(data_train, train_d)
-    with open(os.path.join('saved_data', 'val_data.pkl'), 'wb') as val_d:
+    with open(os.path.join('saved_data', 'transformer_val_data.pkl'), 'wb') as val_d:
         pickle.dump(data_val, val_d)
-    with open(os.path.join('saved_data', 'test_data.pkl'), 'wb') as test_d:
+    with open(os.path.join('saved_data', 'transformer_test_data.pkl'), 'wb') as test_d:
         pickle.dump(data_test, test_d)
 
     return data_train, data_val, data_test
 
 
 if load_data:
-    assert os.path.exists(os.path.join('saved_data', 'train_data.pkl'))\
-           and os.path.exists(os.path.join('saved_data', 'val_data.pkl'))\
-           and os.path.exists(os.path.join('saved_data', 'test_data.pkl')),\
+    assert os.path.exists(os.path.join('saved_data', 'transformer_train_data.pkl'))\
+           and os.path.exists(os.path.join('saved_data', 'transformer_val_data.pkl'))\
+           and os.path.exists(os.path.join('saved_data', 'transformer_test_data.pkl')),\
            'train_data.pkl, val_data.pkl, or test_data.pkl do not exist.'
-    with open(os.path.join('saved_data', 'train_data.pkl'), 'rb') as train_d:
+    with open(os.path.join('saved_data', 'transformer_train_data.pkl'), 'rb') as train_d:
         data_train = pickle.load(train_d)
-    with open(os.path.join('saved_data', 'val_data.pkl'), 'rb') as val_d:
+    with open(os.path.join('saved_data', 'transformer_val_data.pkl'), 'rb') as val_d:
         data_val = pickle.load(val_d)
-    with open(os.path.join('saved_data', 'test_data.pkl'), 'rb') as test_d:
+    with open(os.path.join('saved_data', 'transformer_test_data.pkl'), 'rb') as test_d:
         data_test = pickle.load(test_d)
 else:
     data_train, data_val, data_test = preprocess_data()
@@ -105,7 +106,7 @@ for e in range(1, epochs + 1):
     model.train()
     train_acc = 0
     train_loss = 0
-    print('Epoch {}'.format(e))
+    print('Epoch {}/{} - Learning rate: {}'.format(e, epochs, optimizer.param_groups[0]['lr']))
     print('Training:', end=' ')
     rng.shuffle(data_train)
     for batch in range(0, len(data_train), batch_size):
@@ -127,6 +128,7 @@ for e in range(1, epochs + 1):
             if target[i] == o[i]:
                 train_acc += 1
 
+    scheduler.step()
     train_acc /= len(data_train)
     train_accs.append(train_acc)
     train_loss /= len(data_train)
@@ -160,12 +162,11 @@ for e in range(1, epochs + 1):
     val_loss /= len(data_val)
     val_losses.append(val_loss)
     print('{} Loss: {}; Accuracy: {}'.format(elapsed_time(time() - start_val), val_loss, val_acc))
+    scheduler.step()
 
 print('\nTesting:')
 start_test = time()
-test_accs = []
 test_acc = 0
-test_losses = []
 test_loss = 0
 for batch in range(0, len(data_test), batch_size):
 
@@ -188,9 +189,7 @@ if not os.path.exists('results'):
     os.mkdir('results')
 
 test_acc /= len(data_test)
-test_accs.append(test_acc)
 test_loss /= len(data_test)
-test_losses.append(test_loss)
 print('{} Accuracy: {}'.format(elapsed_time(time() - start_test), test_acc))
 
 plt.figure()
@@ -198,18 +197,27 @@ plt.plot(range(1, epochs+1), train_losses)
 plt.plot(range(1, epochs+1), val_losses)
 plt.legend(('Training Losses', 'Validation Losses'))
 
-plt.title('Training and Evaluation Losses for Baseline Transformer Network')
+plt.title('Training and Evaluation Losses for Transformer Network')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.tight_layout()
-plt.savefig(os.path.join('results', 'trainval_loss.pdf'))
+plt.savefig(os.path.join('results', 'transformer_trainval_loss_{}.pdf'.format(version)))
 
 plt.figure()
 plt.plot(range(1, epochs+1), train_accs)
 plt.plot(range(1, epochs+1), val_accs)
 plt.legend(('Training Accuracy', 'Validation Accuracy'))
-plt.title('Training and Evaluation Accuracies for Baseline Transformer Network')
+plt.title('Training and Evaluation Accuracies for Transformer Network')
 plt.xlabel('Epochs')
 plt.ylabel('Accuracy')
 plt.tight_layout()
-plt.savefig(os.path.join('results', 'trainval_acc.pdf'))
+plt.savefig(os.path.join('results', 'transformer_trainval_acc_{}.pdf'.format(version)))
+
+with open(os.path.join('results', 'transformer_overall_results_{}.txt'.format(version)), 'w') as wt:
+    wt.write('Test accuracy: {}\n'.format(test_acc))
+    wt.write('Test loss: {}\n'.format(test_loss))
+    wt.write('Hyperparameters: Epochs {}; Batch size: {}; Learning rate: {}; step: {}; lag: {}\n'
+             .format(epochs, batch_size, learning_rate, step, lag))
+    wt.write('Scheduler: {}\n'.format(scheduler))
+    wt.write('Loss: {}\n\n'.format(criterion))
+    wt.write('Model: {}'.format(model))
