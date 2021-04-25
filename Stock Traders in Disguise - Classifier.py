@@ -128,7 +128,6 @@ for e in range(1, epochs + 1):
             if target[i] == o[i]:
                 train_acc += 1
 
-    scheduler.step()
     train_acc /= len(data_train)
     train_accs.append(train_acc)
     train_loss /= len(data_train)
